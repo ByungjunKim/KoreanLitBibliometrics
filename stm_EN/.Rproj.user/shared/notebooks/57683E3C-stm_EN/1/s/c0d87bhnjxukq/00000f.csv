@@ -1,0 +1,2 @@
+"0","# 필요한 컬럼만 활용"
+"0","df <- df %>% select(article.id, pub.year,trigrams_lowercase)"

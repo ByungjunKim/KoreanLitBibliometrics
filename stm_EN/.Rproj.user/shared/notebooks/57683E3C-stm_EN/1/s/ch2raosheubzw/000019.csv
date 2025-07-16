@@ -1,0 +1,8 @@
+"0","model1_res <- model1_searchK$results"
+"0","model1_res <- unnest(model1_res,c(K,exclus,semcoh))"
+"0",""
+"0","ggplot(model1_res, aes(x = semcoh, y = exclus, label = K)) +"
+"0","  geom_point() +"
+"0","  geom_text(vjust = -0.5, hjust = 0.5) +"
+"0","  labs(x = ""Semantic Coherence"", y = ""Exclusivity"", title = ""Semantic Coherence vs Exclusivity"") +"
+"0","  theme_minimal()"

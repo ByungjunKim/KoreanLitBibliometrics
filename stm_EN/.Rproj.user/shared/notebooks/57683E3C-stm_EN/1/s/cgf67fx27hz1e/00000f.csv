@@ -1,0 +1,1 @@
+"0","df <- data.frame(py_load_object('./250602_영어영문_토큰화.pkl'))"

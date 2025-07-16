@@ -1,0 +1,1111 @@
+---
+title: "STM"
+format: html
+editor: visual
+jupyter: python3
+---
+
+```{r}
+library(tidyverse)
+library(stm)
+library(stminsights)
+library(parallel)
+library(vroom)
+library(reticulate)
+py_config()
+```
+
+```{r}
+df <- data.frame(py_load_object('250519_2008_2024_한국현대문학_202324_현대문학_임시_토큰화.pkl'))
+```
+
+```{r}
+# 필요한 컬럼만 활용
+# df <- df %>% select(article.id, pub.year,kri_num, gender, filtered_tokens)
+df <- df %>% select(pub.year,filtered_tokens)
+```
+
+```{r}
+df$pub.year <- as.numeric(df$pub.year)
+```
+
+```{r}
+unique_years <- unique(df$pub.year)
+print(unique_years)
+print(length(unique_years))
+```
+
+```{r}
+# 토큰 리스트->문자열 처리 (for STM)
+df$filtered_tokens <- map_chr(df$filtered_tokens,str_c,collapse='  ')
+```
+
+```{r}
+myprocess <- textProcessor(df$filtered_tokens, metadata = df ,wordLengths=c(1,Inf),lowercase = F,
+                           removenumbers = F, removepunctuation = F, removestopwords = F, stem = F)
+myprocess
+length(myprocess$docs.removed)
+```
+
+```{r}
+# N개 이상의 문서에서 등장한 단어만 사용(lower.thresh)
+out <- prepDocuments(myprocess$documents, myprocess$vocab, myprocess$meta,lower.thresh = 500)
+```
+
+```{r}
+model1_searchK <- searchK(out$documents, out$vocab, K = c(4:30),
+                                prevalence = ~s(pub.year),
+                                data = out$meta, init.type="Spectral"
+                                  ,cores=detectCores()-2)
+saveRDS(model1_searchK,'model1_searchK.rds')
+```
+
+```{r}
+plot(model1_searchK)
+```
+
+```{r}
+model1_res <- model1_searchK$results
+model1_res <- unnest(model1_res,c(K,exclus,semcoh))
+
+ggplot(model1_res, aes(x = semcoh, y = exclus, label = K)) +
+  geom_point() +
+  geom_text(vjust = -0.5, hjust = 0.5) +
+  labs(x = "Semantic Coherence", y = "Exclusivity", title = "Semantic Coherence vs Exclusivity") +
+  theme_minimal()
+```
+
+```{r}
+stm_model_year_13 <- stm(out$documents, out$vocab, K=13,
+              prevalence= ~s(pub.year),
+              data=out$meta, init.type="Spectral",seed=2025,
+              verbose = F)
+
+# stm_model_year_16 <- stm(out$documents, out$vocab, K=16,
+#               prevalence= ~s(pub.year),
+#               data=out$meta, init.type="Spectral",seed=2025,
+#               verbose = F)
+```
+
+```{r}
+labelTopics(stm_model_year_13, n = 10)
+```
+
+```{r}
+# STM 모델의 theta 매트릭스에서 토픽 비중 추출
+topic_matrix <- stm_model_year_13[["theta"]]
+
+# 각 토픽의 평균 비중 계산
+average_topic_proportions <- colMeans(topic_matrix)
+
+# 데이터프레임으로 변환
+topic_proportions_df <- data.frame(
+  Topic = paste("Topic", 1:ncol(topic_matrix), sep = " "),
+  Proportion = average_topic_proportions
+)
+
+# 주요 단어 추출 (frex 기준)
+topic_labels <- labelTopics(stm_model_year_13, n = 10)$frex
+
+# 데이터프레임에 주요 단어 추가
+topic_proportions_df <- topic_proportions_df %>%
+  mutate(Frex_Top_Words = apply(topic_labels, 1, paste, collapse = ", "))
+
+# CSV 파일로 저장
+write.csv(topic_proportions_df, "topic_proportions.csv", row.names = FALSE)
+```
+
+```{r}
+m1_K <- stm_model_year_13$settings$dim$K
+stm_effect_model_year <-  estimateEffect(1:m1_K ~s(pub.year),
+                                 stm_model_year_13, meta = out$meta, uncertainty = "Global",prior=1e-5)
+```
+
+```{r}
+# summary(stm_effect_model_year, topics= 1:m1_K)
+```
+
+```{r}
+#### 시간에 따른 토픽 비율 변화 (토픽별로)
+stm_label_year<- labelTopics(stm_model_year_13, n = 10)
+# stm_custom_label <- c('접종순서','거리두기 단계','국내 감염 상황','생활/문화/교육','관련연구/기술',
+#                                       '지원정책','관련주','백신 승인','미국 대선','경제 전망','정부/청와대',
+#                                       '해외 감염 상황','접종후속대책','변이 바이러스','국제협력','증상/전파','백신/치료제 개발','부작용')
+
+par(mfrow=c(2,2))
+j <- 1
+for (i in c(1:m1_K))
+{
+  plot(stm_effect_model_year, "pub.year", method = "continuous", topics = i, printlegend = F,
+  # main = stm_custom_label[j], xaxt = "n")
+  #main = paste(paste0('T', i,':'),paste(stm_custom_label[i], collapse = ", "),sep=' '),
+  #xaxt ="n")
+  
+  # 토픽 이름대신 keyword로 표현하고 싶으면 아래 main 활용 
+  main =  paste('topic', i,paste(stm_label_year$frex[i,1:4], collapse = ", "),sep=' '))
+  
+  yearseq <- seq(from=as.Date('2008-01-01'), to=as.Date('2024-12-31'),by='year')
+yearnames <- year(yearseq)
+axis(1,at=as.numeric(yearseq) - min(as.numeric(yearseq)),labels=yearnames)
+  
+  j <- j+1
+
+}
+```
+
+### Gender 변수 추가 (불완전)
+
+```{r}
+df <- data.frame(py_load_object('250519_2008_2024_한국현대문학_202324_현대문학_임시_토큰화.pkl'))
+df <- df %>% select(article.id, pub.year,kri_num, gender, filtered_tokens)
+```
+
+```{r}
+# 값이 단일 NaN인지 안전하게 확인하는 함수 정의
+is_single_nan <- function(x) {
+  # 1. x는 원자 단위(atomic)여야 하고,
+  # 2. 길이가 정확히 1이어야 하며,
+  # 3. 그 값이 is.nan()이어야 합니다.
+  # 이 세 조건을 모두 만족하지 않으면 FALSE를 반환하여 오류를 방지합니다.
+  is.atomic(x) && length(x) == 1 && is.nan(x)
+}
+
+# 이제 filter 안에서 새로 정의한 안전한 함수를 사용합니다.
+df_gender <-  df %>%
+  filter(!map_lgl(gender, is_single_nan))
+```
+
+```{r}
+# 13021 행의 gender 컬럼에 '남'을 삽입합니다.
+df_gender["13021", "gender"] <- "남"
+
+# 13083 행의 gender 컬럼에 '여'를 삽입합니다.
+df_gender["13083", "gender"] <- "여"
+```
+
+```{r}
+# 1. 어떤 종류의 비정상 데이터도 NA로 바꾸는 '안전 변환' 함수를 정의합니다.
+safe_converter <- function(x) {
+  # 항목이 NULL이거나, 비어 있거나(list()), 그 안의 첫 값이 NULL인 경우
+  if (is.null(x) || length(x) == 0 || is.null(x[[1]])) {
+    return(NA_character_) # 모두 NA로 처리
+  }
+  
+  # 첫 번째 값의 길이가 0인 경우 (예: list(character(0)))
+  if (length(x[[1]]) == 0) {
+    return(NA_character_) # 이 또한 NA로 처리
+  }
+  
+  # 모든 검사를 통과한 정상적인 값이면, 텍스트로 변환하여 반환
+  return(as.character(x[[1]]))
+}
+
+
+# 2. 새로 만든 'safe_converter' 함수를 map_chr에 적용하여 벡터를 생성합니다.
+gender_vector <- map_chr(df_gender$gender, safe_converter)
+```
+
+```{r}
+# 3. 이제 100% 안전한 벡터를 데이터프레임에 다시 할당하고, 팩터(factor)로 변환합니다.
+df_gender$gender <- as.factor(gender_vector)
+
+
+# 4. summary() 함수로 빈도수를 확인합니다.
+cat("--- 컬럼 요약 ---\n")
+print(summary(df_gender$gender))
+```
+
+```{r}
+myprocess_g <- textProcessor(df_gender$filtered_tokens, metadata = df_gender ,wordLengths=c(1,Inf),lowercase = F,
+                           removenumbers = F, removepunctuation = F, removestopwords = F, stem = F)
+myprocess_g
+length(myprocess_g$docs.removed)
+```
+
+```{r}
+# N개 이상의 문서에서 등장한 단어만 사용(lower.thresh)
+out_g <- prepDocuments(myprocess_g$documents, myprocess_g$vocab, myprocess_g$meta,lower.thresh = 400)
+```
+
+```{r}
+model1_searchK_g <- searchK(out_g$documents, out_g$vocab, K = c(4:30),
+                                prevalence = ~gender+s(pub.year),
+                                data = out_g$meta, init.type="Spectral"
+                                  ,cores=detectCores()-2)
+saveRDS(model1_searchK_g,'model1_searchK_g.rds')
+```
+
+```{r}
+model1_res <- model1_searchK_g$results
+model1_res <- unnest(model1_res,c(K,exclus,semcoh))
+
+ggplot(model1_res, aes(x = semcoh, y = exclus, label = K)) +
+  geom_point() +
+  geom_text(vjust = -0.5, hjust = 0.5) +
+  labs(x = "Semantic Coherence", y = "Exclusivity", title = "Semantic Coherence vs Exclusivity") +
+  theme_minimal()
+```
+
+```{r}
+stm_model_gender_11 <- stm(out_g$documents, out_g$vocab, K=11,
+              prevalence= ~gender+s(pub.year),
+              data=out_g$meta, init.type="Spectral",seed=2025,
+              verbose = F)
+```
+
+```{r}
+labelTopics(stm_model_gender_11, n = 10)
+```
+
+```{r}
+m1_K_g <- stm_model_gender_11$settings$dim$K 
+stm_effect_model_gender <-  estimateEffect(1:m1_K_g~gender+s(pub.year),
+                                 stm_model_gender_11, meta = out_g$meta, uncertainty = "Global",prior=1e-5)
+```
+
+```{r}
+# summary(stm_effect_model_gender, topics= 1:m1_K_g)
+```
+
+```{r}
+# 명목변수 효과 시각화
+plot.estimateEffect(stm_effect_model_gender, covariate = "gender",
+                    topics = c(1:m1_K_g), method = "difference",
+                    model = stm_model_gender_11, # to show labels alongside
+                    cov.value1 = "남", cov.value2 = "여",
+                    xlab = "여 <----------------------> 남", xlim = c(-.4, .4),
+                    labeltype = "frex", n = 10,
+                    width = 100,  verbose.labels = F)
+```
+
+```{r}
+plots_per_file <- 4
+num_files <- ceiling(m1_K_g / plots_per_file) # 생성될 총 파일 수
+plot_counter_total <- 0 # 전체 플롯 카운터
+stm_label_year<- labelTopics(stm_model_gender_11, n = 10)
+
+# 데이터의 연도 범위 미리 계산
+min_year_data <- floor(min(stm_effect_model_gender$data$pub.year, na.rm = TRUE))
+max_year_data <- ceiling(max(stm_effect_model_gender$data$pub.year, na.rm = TRUE))
+
+for (file_num in 1:num_files) {
+  start_topic_in_file <- (file_num - 1) * plots_per_file + 1
+  end_topic_in_file <- min(file_num * plots_per_file, m1_K_g)
+  # 파일명은 이전과 동일한 패턴을 유지합니다.
+  filename_png <- paste0("topic_proportions_gender_", start_topic_in_file, "_to_", end_topic_in_file, ".png")
+
+  png(filename = filename_png,
+      width = 18,       # 전체 PNG 너비 유지
+      height = 14,      # 전체 PNG 높이 유지
+      units = "in",
+      res = 300)
+
+  par(mfrow = c(2, 2))
+  # 각 subplot의 여백: par(mar = c(bottom, left, top, right))
+  # 상단 여백을 제목 크기에 맞춰 더 늘림
+  par(mar = c(4.5, 4.5, 6.0, 2.1)) # 상단 여백 5.0 -> 6.0으로 증가
+
+  for (i in start_topic_in_file:end_topic_in_file) {
+    plot_counter_total <- plot_counter_total + 1
+
+    # 제목에 사용될 키워드 수는 3개로 유지 (필요시 조절)
+    main_title <- paste0('Topic ', i, ': ', paste(stm_label_year$frex[i, 1:5], collapse = ", "))
+
+    plot(stm_effect_model_gender,
+         covariate = "pub.year",
+         method = "continuous",
+         topics = i,
+         printlegend = FALSE,
+         main = main_title,
+         xaxt = "n",
+         cex.main = 1.8,  # 메인 제목 크기 대폭 증가 (예: 1.4 -> 1.8)
+         cex.axis = 1.0,  # 축 눈금 레이블 크기 유지 (이전과 동일)
+         cex.lab = 1.2)   # 축 제목 크기 유지 (이전과 동일)
+
+    tick_years <- pretty(seq(min_year_data, max_year_data, by=1), n=5)
+    axis(1, at = tick_years, labels = tick_years, cex.axis = 1.0) # x축 눈금 크기 유지
+
+  } # 현재 파일 내 토픽 루프 종료
+
+  plots_in_current_file <- end_topic_in_file - start_topic_in_file + 1
+  if (plots_in_current_file < plots_per_file) {
+    for (j in 1:(plots_per_file - plots_in_current_file)) {
+      plot.new() # 빈 플롯으로 채움
+    }
+  }
+
+  dev.off() # 현재 PNG 파일 장치 닫기
+  cat("제목이 더 커진 플롯 그룹이", filename_png, "로 저장되었습니다.\n")
+
+} # 전체 파일 루프 종료
+
+# 작업 후 R 기본 플롯 파라미터로 복원 (선택 사항)
+# par(mfrow = c(1, 1))
+# par(mar = c(5.1, 4.1, 4.1, 2.1)) # R 기본값 예시
+
+cat("모든 2x2 플롯 그룹 (제목 추가 확대) 저장이 완료되었습니다.\n")
+```
+
+##### 연도별 토픽 비중 변화
+
+```{r}
+# 토픽 레이블 생성
+stm_label_year <- labelTopics(stm_model_gender_11, n = 10)
+
+# 데이터의 연도 범위 미리 계산
+min_year_data <- floor(min(stm_effect_model_gender$data$pub.year, na.rm = TRUE))
+max_year_data <- ceiling(max(stm_effect_model_gender$data$pub.year, na.rm = TRUE))
+
+
+# --- 1. 저장할 폴더 생성 ---
+
+# 저장할 폴더의 이름을 변수로 지정합니다.
+output_folder <- "topic_plots"
+
+# 폴더가 존재하지 않는 경우에만 폴더를 생성합니다.
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder)
+  cat(paste0("'", output_folder, "' 폴더를 생성했습니다.\n"))
+} else {
+  cat(paste0("'", output_folder, "' 폴더가 이미 존재합니다. 파일을 덮어쓸 수 있습니다.\n"))
+}
+
+
+# --- 2. 플롯을 하나씩 개별 파일로 저장하는 루프 ---
+
+# m1_K_g (전체 토픽 수) 만큼 반복합니다.
+for (i in 1:m1_K_g) {
+  
+  # 파일명 설정: 폴더 경로를 포함하여 파일 전체 경로를 생성합니다.
+  base_filename <- paste0("topic_proportions_gender_topic_", i, ".png")
+  full_filepath <- file.path(output_folder, base_filename)
+  
+  # PNG 그래픽 장치 열기: 단일 플롯에 적합한 크기로 설정합니다.
+  png(filename = full_filepath,
+      width = 10,      # 단일 플롯 너비 (인치)
+      height = 7,       # 단일 플롯 높이 (인치)
+      units = "in",
+      res = 300)        # 고해상도 설정 유지
+
+  # 플롯 여백 설정: 큰 제목을 위한 충분한 상단 공간을 확보합니다.
+  par(mar = c(5.1, 4.5, 6.0, 2.1)) # par(mar = c(bottom, left, top, right))
+
+  # 플롯 제목 생성
+  main_title <- paste0('Topic ', i, ': ', paste(stm_label_year$frex[i, 1:5], collapse = ", "))
+
+  # stm 효과 플롯 그리기
+  plot(stm_effect_model_gender,
+       covariate = "pub.year",
+       method = "continuous",
+       topics = i,
+       printlegend = FALSE,
+       main = main_title,
+       xaxt = "n",
+       cex.main = 1.8,  # 메인 제목 크기
+       cex.axis = 1.2,  # 축 눈금 레이블 크기
+       cex.lab = 1.4)   # 축 제목 크기
+
+  # x축 눈금 직접 설정
+  tick_years <- pretty(seq(min_year_data, max_year_data, by=1), n=5)
+  axis(1, at = tick_years, labels = tick_years, cex.axis = 1.2)
+
+  # 현재 그린 플롯을 파일로 저장하고 그래픽 장치를 닫습니다.
+  dev.off() 
+  
+  # 진행 상황을 콘솔에 출력 (전체 경로 포함)
+  cat(paste0("토픽 ", i, "의 플롯이 '", full_filepath, "' 파일로 저장되었습니다.\n"))
+  
+} # for 루프 종료
+
+# R의 기본 플롯 파라미터로 복원 (선택 사항)
+# par(mar = c(5.1, 4.1, 4.1, 2.1), mfrow = c(1, 1))
+
+cat(paste0("\n모든 개별 플롯 저장이 '", output_folder, "' 폴더에 완료되었습니다.\n"))
+```
+
+#### 교호 작용(Gender \* Year)
+
+```{r}
+stm_model_gender_11_inter <- stm(out_g$documents, out_g$vocab, K=11,
+              prevalence= ~gender*pub.year,
+              data=out_g$meta, init.type="Spectral",seed=2025,
+              verbose = F)
+
+stm_model_gender_11_inter_s <- stm(out_g$documents, out_g$vocab, K=11,
+              prevalence= ~gender*s(pub.year),
+              data=out_g$meta, init.type="Spectral",seed=2025,
+              verbose = F)
+```
+
+```{r}
+labelTopics(stm_model_gender_11_inter, n = 10)
+```
+
+```{r}
+# PNG 그래픽 장치 시작
+png(filename = 'stm_k11.png',
+    width = 15,        # 너비 (인치 단위)
+    height = 10,       # 높이 (인치 단위)
+    units = "in",     # 단위 (인치)
+    res = 300)        # 해상도 (ppi)
+
+# 플롯 여백 설정: par(mar = c(bottom, left, top, right))
+# 글씨가 커지므로, 단어가 표시되는 쪽의 여백을 더 확보합니다.
+# (오른쪽에 단어가 표시된다고 가정하고 오른쪽 여백을 7.1로 늘림)
+original_mar <- par("mar") # 현재 여백 저장
+par(mar = c(5.1, 4.1, 4.1, 7.1)) # 오른쪽 여백을 이전보다 더 늘림 (예: 6.1 -> 7.1)
+
+# 그래프 그리기
+# text.cex 값을 1보다 크게 설정하여 글자 크기를 키웁니다. (예: 1.0, 1.2)
+plot(stm_model_gender_11_inter,
+     topics = 1:11,
+     n = 10,
+     text.cex = 1.2) # 텍스트 크기 증가 (예: 0.8 -> 1.2)
+
+# 그래픽 장치 닫기 (이것을 실행해야 파일이 완전히 저장됩니다)
+dev.off()
+```
+
+```{r}
+m1_K_g <- stm_model_gender_11_inter$settings$dim$K 
+stm_effect_model_gender_inter <-  estimateEffect(1:m1_K_g~gender*pub.year,
+                                 stm_model_gender_11_inter, meta = out_g$meta, uncertainty = "Global",prior=1e-5)
+stm_effect_model_gender_inter_s <-  estimateEffect(1:m1_K_g~gender*s(pub.year),
+                                 stm_model_gender_11_inter, meta = out_g$meta, uncertainty = "Global",prior=1e-5)
+```
+
+```{r}
+save.image('240614_stm_kl.RData')
+```
+
+```{r}
+# 시스템 폰트 경로 지정
+font_add("nanum", regular = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf")
+
+# 또는 showtext 내장 CJK 글꼴도 가능
+# font_add("wqy", regular = "wqy-microhei")   # 이미 포함된 WenQuanYi Micro Hei
+
+showtext_auto()        # 이후 모든 디바이스에서 자동 적용
+par(family = "nanum")  # dev.new() 전에 한 번만 지정
+```
+
+```{r}
+library(stm)
+library(ggplot2)
+library(gridExtra)
+library(tidyverse)
+
+# Gender 변수 확인
+cat("Gender 변수의 고유값:", unique(out_g$meta$gender), "\n")
+cat("Gender 변수의 클래스:", class(out_g$meta$gender), "\n")
+
+# gender가 factor인지 확인하고 필요시 변환
+if(!is.factor(out_g$meta$gender)) {
+  out_g$meta$gender <- as.factor(out_g$meta$gender)
+}
+
+# FREX 단어 추출
+topic_labels <- labelTopics(stm_model_gender_11_inter, n = 5)
+frex_words <- topic_labels$frex
+
+# 각 토픽의 FREX 단어를 문자열로 만들기
+topic_titles <- character(11)
+for(i in 1:11) {
+  # FREX 상위 5개 단어를 쉼표로 연결
+  words <- paste(frex_words[i, 1:5], collapse = ", ")
+  topic_titles[i] <- paste0("Topic ", i, ": ", words)
+}
+
+# 토픽 제목 확인
+cat("\n각 토픽의 FREX 상위 5개 단어:\n")
+for(i in 1:11) {
+  cat(topic_titles[i], "\n")
+}
+
+# 1. FREX 단어를 포함한 2x2 레이아웃
+# 페이지 1: 토픽 1-4
+dev.new(width = 14, height = 12)  # 더 큰 창 크기
+
+par(mfrow = c(2, 2), 
+    mar = c(5, 5, 6, 2),  # 상단 여백 증가 (제목이 길어짐)
+    oma = c(2, 2, 3, 2),
+    cex.main = 1.1,       # 제목 크기 약간 축소 (긴 제목 때문)
+    cex.lab = 1.2,
+    cex.axis = 1.1)
+
+for(i in 1:4) {
+  # 빈 플롯 생성
+  plot(0, type = "n", 
+       xlim = range(out_g$meta$pub.year), 
+       ylim = c(0, 0.15),
+       xlab = "Publication Year",
+       ylab = "Topic Prevalence",
+       main = "")  # 제목은 나중에 추가
+  
+  # 그리드 추가
+  grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+  
+  # 남성 데이터 플롯
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "남",
+       linecol = "blue",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 여성 데이터 플롯
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "여",
+       linecol = "red",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 제목 추가 (두 줄로 나누어 표시)
+  ## 머리글 2줄: Topic n (크게) + FREX (더 크게)
+  title(main = paste0("Topic ", i),
+        line = 3,  cex.main = 1.5)                  # 첫 줄
+  title(sub  = paste(frex_words[i, 1:5], collapse = ", "),
+        line = 1.3, cex.sub  = 1.3, font.sub = 1)   # 둘째 줄(FREX)
+  
+  # 범례 추가
+  legend("topright", 
+         legend = c("남성", "여성"), 
+         col = c("blue", "red"), 
+         lty = 1, 
+         lwd = 3,
+         bty = "n",
+         cex = 1.1)
+}
+
+# 전체 제목 추가
+mtext("Gender × Year Interaction Effects (Topics 1-4)", 
+      outer = TRUE, cex = 1.6, line = 1)
+
+# 페이지 2: 토픽 5-8
+dev.new(width = 14, height = 12)
+par(mfrow = c(2, 2), 
+    mar = c(5, 5, 6, 2),
+    oma = c(2, 2, 3, 2),
+    cex.main = 1.1,
+    cex.lab = 1.2,
+    cex.axis = 1.1)
+
+for(i in 5:8) {
+  plot(0, type = "n", 
+       xlim = range(out_g$meta$pub.year), 
+       ylim = c(0, 0.15),
+       xlab = "Publication Year",
+       ylab = "Topic Prevalence",
+       main = "")
+  
+  grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+  
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "남",
+       linecol = "blue",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "여",
+       linecol = "red",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 제목 추가 (두 줄로)
+  title(main = paste0("Topic ", i), line = 2.5, cex.main = 1.3)
+  title(main = paste(frex_words[i, 1:5], collapse = ", "), 
+        line = 1, cex.main = 0.9, font.main = 1)
+  
+  legend("topright", 
+         legend = c("남성", "여성"), 
+         col = c("blue", "red"), 
+         lty = 1, 
+         lwd = 3,
+         bty = "n",
+         cex = 1.1)
+}
+
+mtext("Gender × Year Interaction Effects (Topics 5-8)", 
+      outer = TRUE, cex = 1.6, line = 1)
+
+# 페이지 3: 토픽 9-11
+dev.new(width = 14, height = 12)
+par(mfrow = c(2, 2), 
+    mar = c(5, 5, 6, 2),
+    oma = c(2, 2, 3, 2),
+    cex.main = 1.1,
+    cex.lab = 1.2,
+    cex.axis = 1.1)
+
+for(i in 9:11) {
+  plot(0, type = "n", 
+       xlim = range(out_g$meta$pub.year), 
+       ylim = c(0, 0.15),
+       xlab = "Publication Year",
+       ylab = "Topic Prevalence",
+       main = "")
+  
+  grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+  
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "남",
+       linecol = "blue",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "여",
+       linecol = "red",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 제목 추가 (두 줄로)
+  title(main = paste0("Topic ", i), line = 2.5, cex.main = 1.3)
+  title(main = paste(frex_words[i, 1:5], collapse = ", "), 
+        line = 1, cex.main = 0.9, font.main = 1)
+  
+  legend("topright", 
+         legend = c("남성", "여성"), 
+         col = c("blue", "red"), 
+         lty = 1, 
+         lwd = 3,
+         bty = "n",
+         cex = 1.1)
+}
+
+# 빈 플롯
+plot.new()
+
+mtext("Gender × Year Interaction Effects (Topics 9-11)", 
+      outer = TRUE, cex = 1.6, line = 1)
+
+# 2. 함수 버전 (원하는 페이지만 그리기)
+plot_topics_2x2_with_frex <- function(page = 1, word_type = "frex", n_words = 5) {
+  # 단어 유형 선택 (frex, prob, lift, score 중 선택 가능)
+  topic_labels <- labelTopics(stm_model_gender_11_inter, n = n_words)
+  
+  if(word_type == "frex") {
+    words_matrix <- topic_labels$frex
+  } else if(word_type == "prob") {
+    words_matrix <- topic_labels$prob
+  } else if(word_type == "lift") {
+    words_matrix <- topic_labels$lift
+  } else if(word_type == "score") {
+    words_matrix <- topic_labels$score
+  } else {
+    stop("word_type must be one of: frex, prob, lift, score")
+  }
+  
+  # 페이지별 토픽 설정
+  if(page == 1) {
+    topics <- 1:4
+    title <- "Topics 1-4"
+  } else if(page == 2) {
+    topics <- 5:8
+    title <- "Topics 5-8"
+  } else if(page == 3) {
+    topics <- 9:11
+    title <- "Topics 9-11"
+  } else {
+    stop("Page must be 1, 2, or 3")
+  }
+  
+  # 새 창 열기
+  dev.new(width = 14, height = 12)
+  
+  par(mfrow = c(2, 2), 
+      mar = c(5, 5, 6, 2),
+      oma = c(2, 2, 3, 2),
+      cex.main = 1.1,
+      cex.lab = 1.2,
+      cex.axis = 1.1)
+  
+  for(i in topics) {
+    plot(0, type = "n", 
+         xlim = range(out_g$meta$pub.year), 
+         ylim = c(0, 0.15),
+         xlab = "Publication Year",
+         ylab = "Topic Prevalence",
+         main = "")
+    
+    grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+    
+    plot(stm_effect_model_gender_inter, 
+         covariate = "pub.year", 
+         model = stm_model_gender_11_inter,
+         method = "continuous",
+         topics = i,
+         moderator = "gender",
+         moderator.value = "남",
+         linecol = "blue",
+         lwd = 3,
+         add = TRUE,
+         printlegend = FALSE)
+    
+    plot(stm_effect_model_gender_inter, 
+         covariate = "pub.year", 
+         model = stm_model_gender_11_inter,
+         method = "continuous",
+         topics = i,
+         moderator = "gender",
+         moderator.value = "여",
+         linecol = "red",
+         lwd = 3,
+         add = TRUE,
+         printlegend = FALSE)
+    
+    # 제목 추가
+    title(main = paste0("Topic ", i), line = 2.5, cex.main = 1.3)
+    title(main = paste(words_matrix[i, 1:n_words], collapse = ", "), 
+          line = 1, cex.main = 0.9, font.main = 1)
+    
+    legend("topright", 
+           legend = c("남성", "여성"), 
+           col = c("blue", "red"), 
+           lty = 1, 
+           lwd = 3,
+           bty = "n",
+           cex = 1.1)
+  }
+  
+  # 마지막 페이지에서 빈 플롯
+  if(page == 3 && length(topics) < 4) {
+    plot.new()
+  }
+  
+  mtext(paste("Gender × Year Interaction Effects (", title, ")"), 
+        outer = TRUE, cex = 1.6, line = 1)
+}
+
+# 사용 예시:
+# plot_topics_2x2_with_frex(1)  # 토픽 1-4, FREX 단어
+# plot_topics_2x2_with_frex(2, word_type = "prob")  # 토픽 5-8, 확률 기준
+# plot_topics_2x2_with_frex(3, n_words = 3)  # 토픽 9-11, 상위 3개 단어만
+
+# 3. PDF로 저장 (모든 페이지)
+cairo_pdf("stm_gender_year_with_frex.pdf", width = 14, height = 12)
+
+for(page in 1:3) {
+  par(mfrow = c(2, 2), 
+      mar = c(5, 5, 6, 2),
+      oma = c(2, 2, 3, 2),
+      cex.main = 1.1,
+      cex.lab = 1.2,
+      cex.axis = 1.1)
+  
+  if(page == 1) {
+    topic_range <- 1:4
+    page_title <- "Topics 1-4"
+  } else if(page == 2) {
+    topic_range <- 5:8
+    page_title <- "Topics 5-8"
+  } else {
+    topic_range <- 9:11
+    page_title <- "Topics 9-11"
+  }
+  
+  for(i in topic_range) {
+    plot(0, type = "n", 
+         xlim = range(out_g$meta$pub.year), 
+         ylim = c(0, 0.15),
+         xlab = "Publication Year",
+         ylab = "Topic Prevalence",
+         main = "",
+         las = 1)
+    
+    grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+    
+    plot(stm_effect_model_gender_inter, 
+         covariate = "pub.year", 
+         model = stm_model_gender_11_inter,
+         method = "continuous",
+         topics = i,
+         moderator = "gender",
+         moderator.value = "남",
+         linecol = "blue",
+         lwd = 3,
+         add = TRUE,
+         printlegend = FALSE)
+    
+    plot(stm_effect_model_gender_inter, 
+         covariate = "pub.year", 
+         model = stm_model_gender_11_inter,
+         method = "continuous",
+         topics = i,
+         moderator = "gender",
+         moderator.value = "여",
+         linecol = "red",
+         lwd = 3,
+         add = TRUE,
+         printlegend = FALSE)
+    
+    title(main = paste0("Topic ", i), line = 2.5, cex.main = 1.3)
+    title(main = paste(frex_words[i, 1:5], collapse = ", "), 
+          line = 1, cex.main = 0.9, font.main = 1)
+    
+    legend("topright", 
+           legend = c("남성", "여성"), 
+           col = c("blue", "red"), 
+           lty = 1, 
+           lwd = 3,
+           bty = "n",
+           cex = 1.1,
+           bg = "white")
+  }
+  
+  if(page == 3) {
+    plot.new()
+  }
+  
+  mtext(paste("Gender × Year Interaction Effects (", page_title, ")"), 
+        outer = TRUE, cex = 1.6, line = 1)
+}
+
+dev.off()
+
+# 원래 설정으로 복원
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# 필요한 라이브러리가 로드되었다고 가정합니다.
+# library(stm)
+
+# --- 1. 사전 준비 (기존 코드와 동일) ---
+
+# Gender 변수가 factor인지 확인하고 필요시 변환
+if(!is.factor(out_g$meta$gender)) {
+  out_g$meta$gender <- as.factor(out_g$meta$gender)
+}
+
+# FREX 상위 5개 단어 추출
+topic_labels <- labelTopics(stm_model_gender_11_inter, n = 5)
+frex_words <- topic_labels$frex
+
+# 결과를 저장할 폴더 생성 (폴더가 없으면 생성)
+if (!dir.exists("topic_plots")) {
+  dir.create("topic_plots")
+}
+
+# --- 2. 개별 토픽 플롯을 PNG 파일로 저장 ---
+
+# 총 토픽 개수 (하드코딩 대신 모델에서 가져오는 것이 더 안전함)
+num_topics <- stm_model_gender_11_inter$settings$dim$K # 여기서는 11이 됩니다.
+
+# 모든 토픽에 대해 반복 실행
+for(i in 1:num_topics) {
+  
+  # --- 파일명 및 플롯 제목 생성 ---
+  # 상위 단어를 쉼표로 연결
+  words_string <- paste(frex_words[i, 1:5], collapse = ", ")
+  
+  # 플롯 제목 생성 (줄바꿈'\n'을 이용해 두 줄로 만듦)
+  plot_title <- paste0("Topic ", i, ":\n", words_string)
+  
+  # 저장할 파일 경로 및 이름 설정
+  file_name <- paste0("topic_plots/Topic_", i, "_Interaction_Plot.png")
+  
+  # --- 고화질 PNG 파일로 저장 시작 ---
+  # width, height는 인치 단위, res는 해상도(dpi)
+  png(file_name, width = 10, height = 7, units = "in", res = 300)
+  
+  # 플롯 여백 설정 (상단 마진을 늘려 두 줄 제목 공간 확보)
+  par(mar = c(5.1, 4.1, 5.1, 2.1))
+  
+  # --- 단일 플롯 그리기 ---
+  # 1) 빈 플롯 생성하여 축, 제목 등 기본 구조 설정
+  plot(0, type = "n", 
+       xlim = range(out_g$meta$pub.year), 
+       ylim = c(0, 0.2), # 모든 토픽에 일관된 Y축을 위해 고정, 필요시 조정
+       xlab = "Publication Year",
+       ylab = "Topic Prevalence",
+       main = plot_title,
+       cex.main = 1.5, # 제목 크기
+       cex.lab = 1.2,
+       cex.axis = 1.1)
+  
+  # 그리드 추가
+  grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+  
+  # 2) 남성 데이터 플롯 (add = TRUE로 겹쳐 그리기)
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "남",
+       linecol = "blue",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 3) 여성 데이터 플롯 (add = TRUE로 겹쳐 그리기)
+  plot(stm_effect_model_gender_inter, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "여",
+       linecol = "red",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 4) 범례 추가
+  legend("topright", 
+         legend = c("남성", "여성"), 
+         col = c("blue", "red"), 
+         lty = 1, 
+         lwd = 3,
+         bty = "n", # 범례 테두리 없음
+         cex = 1.2)
+         
+  # --- 그래픽 장치를 닫아 파일 저장 완료 ---
+  dev.off()
+}
+
+# 완료 메시지 출력
+cat(paste("\n총", num_topics, "개의 토픽 플롯이 'topic_plots' 폴더에 성공적으로 저장되었습니다.\n"))
+
+# 그래픽 파라미터 초기화
+par(mfrow = c(1, 1), mar = c(5.1, 4.1, 4.1, 2.1))
+```
+
+```{r}
+# FREX 상위 5개 단어 추출
+# [수정] stm_model_gender_11_inter_s 변수 사용
+topic_labels <- labelTopics(stm_model_gender_11_inter_s, n = 5)
+frex_words <- topic_labels$frex
+
+# 결과를 저장할 폴더 생성 (폴더가 없으면 생성)
+output_folder <- "topic_plots"
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder)
+}
+
+# --- 2. 개별 토픽 플롯을 PNG 파일로 저장 ---
+
+# 총 토픽 개수 (모델에서 직접 가져옴)
+# [수정] stm_model_gender_11_inter_s 변수 사용
+num_topics <- stm_model_gender_11_inter_s$settings$dim$K
+
+# 모든 토픽에 대해 반복 실행
+for(i in 1:num_topics) {
+  
+  # --- 파일명 및 플롯 제목 생성 ---
+  # 상위 단어를 쉼표로 연결
+  words_string <- paste(frex_words[i, 1:5], collapse = ", ")
+  
+  # 플롯 제목 생성 (줄바꿈'\n'을 이용해 두 줄로 만듦)
+  plot_title <- paste0("Topic ", i, ":\n", words_string)
+  
+  # [수정] 저장할 파일 경로 및 이름 설정 ('_S' 추가)
+  file_name <- file.path(output_folder, paste0("Topic_", i, "_Interaction_Plot_S.png"))
+  
+  # --- 고화질 PNG 파일로 저장 시작 ---
+  png(file_name, width = 10, height = 7, units = "in", res = 300)
+  
+  # 플롯 여백 설정 (상단 마진을 늘려 두 줄 제목 공간 확보)
+  par(mar = c(5.1, 4.1, 5.1, 2.1))
+  
+  # --- 단일 플롯 그리기 ---
+  # 1) 빈 플롯 생성하여 축, 제목 등 기본 구조 설정
+  # [수정] xlim 범위를 effect 모델 객체에서 직접 가져와 안정성 향상
+  plot(0, type = "n", 
+       xlim = range(stm_effect_model_gender_inter_s$data$pub.year), 
+       ylim = c(0, 0.2), # Y축 범위는 데이터에 맞게 조정이 필요할 수 있습니다.
+       xlab = "Publication Year",
+       ylab = "Topic Prevalence",
+       main = plot_title,
+       cex.main = 1.5, # 제목 크기
+       cex.lab = 1.2,
+       cex.axis = 1.1)
+  
+  # 그리드 추가
+  grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+  
+  # 2) 남성 데이터 플롯 (add = TRUE로 겹쳐 그리기)
+  # [수정] stm_effect_model_gender_inter_s 및 stm_model_gender_11_inter_s 변수 사용
+  plot(stm_effect_model_gender_inter_s, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter_s,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "남",
+       linecol = "blue",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 3) 여성 데이터 플롯 (add = TRUE로 겹쳐 그리기)
+  # [수정] stm_effect_model_gender_inter_s 및 stm_model_gender_11_inter_s 변수 사용
+  plot(stm_effect_model_gender_inter_s, 
+       covariate = "pub.year", 
+       model = stm_model_gender_11_inter_s,
+       method = "continuous",
+       topics = i,
+       moderator = "gender",
+       moderator.value = "여",
+       linecol = "red",
+       lwd = 3,
+       add = TRUE,
+       printlegend = FALSE)
+  
+  # 4) 범례 추가
+  legend("topright", 
+         legend = c("남성", "여성"), 
+         col = c("blue", "red"), 
+         lty = 1, 
+         lwd = 3,
+         bty = "n", # 범례 테두리 없음
+         cex = 1.2)
+         
+  # --- 그래픽 장치를 닫아 파일 저장 완료 ---
+  dev.off()
+}
+
+# 완료 메시지 출력
+cat(paste("\n총", num_topics, "개의 토픽 플롯이 '", output_folder, "' 폴더에 성공적으로 저장되었습니다.\n"))
+
+# 그래픽 파라미터 초기화
+par(mfrow = c(1, 1), mar = c(5.1, 4.1, 4.1, 2.1))
+```

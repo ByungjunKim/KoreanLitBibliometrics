@@ -1,0 +1,7 @@
+"0","model1_searchK <- searchK(out$documents, out$vocab, K = c(4:30),"
+"0","                                prevalence = ~s(pub.year),"
+"0","                                data = out$meta, init.type=""Spectral"""
+"0","                                  ,cores=detectCores()-4)"
+"1","Using multiple-cores.  Progress will not be shown. 
+"
+"0","saveRDS(model1_searchK,'model1_searchK.rds')"

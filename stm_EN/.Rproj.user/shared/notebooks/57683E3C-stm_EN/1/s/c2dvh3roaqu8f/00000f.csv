@@ -1,0 +1,73 @@
+"0","# K = 14"
+"0","labelTopics(stm_model_year_14, n = 10)"
+"1","Topic 1 Top Words:
+ 	 Highest Prob: culture, text, translation, criticism, new, modernity, korea, studies, style, american 
+ 	 FREX: translation, culture, modernity, text, studies, new, style, kim, criticism, economy 
+ 	 Lift: translation, modernity, cultural, literary, studies, culture, economy, kim, text, style 
+ 	 Score: translation, culture, text, modernity, criticism, new, korea, studies, virginia_woolf, theatre 
+Topic 2 Top Words:
+ 	 Highest Prob: discourse, word, difference, context, term, part, knowledge, concept, function, boundary 
+ 	 FREX: discourse, difference, word, boundary, context, noun, function, part, knowledge, term 
+ 	 Lift: noun, number, discourse, boundary, name, difference, formation, function, word, device 
+ 	 Score: noun, discourse, word, difference, knowledge, context, part, function, boundary, name 
+Topic 3 Top Words:
+ 	 Highest Prob: novel, society, century, class, john, fiction, art, milton, writer, england 
+ 	 FREX: john, milton, england, society, james, satire, genre, century, freedom, elizabeth 
+ 	 Lift: satire, milton, bakhtin, john, parody, mary, elizabeth, england, james, genre 
+ 	 Score: satire, novel, society, john, milton, century, fiction, james, class, art 
+Topic 4 Top Words:
+ 	 Highest Prob: meaning, analysis, verb, construction, metaphor, object, change, form, aspect, interpretation 
+ 	 FREX: verb, metaphor, object, construction, corpus, meaning, interpretation, change, speech, analysis 
+ 	 Lift: verb, metaphor, corpus, variation, speech, object, interpretation, construction, property, event 
+ 	 Score: verb, construction, corpus, metaphor, analysis, meaning, object, korean, grammar, speech 
+Topic 5 Top Words:
+ 	 Highest Prob: self, love, life, death, consciousness, myth, god, conflict, vision, marriage 
+ 	 FREX: love, myth, hawthorne, god, death, romance, irony, marriage, self, consciousness 
+ 	 Lift: irony, hawthorne, love, romance, paradox, marriage, myth, god, alienation, henry_james 
+ 	 Score: irony, love, self, death, hawthorne, life, romance, god, myth, marriage 
+Topic 6 Top Words:
+ 	 Highest Prob: nature, man, imagination, age, lawrence, view, human, thing, being, politic 
+ 	 FREX: lawrence, nature, city, wordsworth, deleuze, thomas, imagination, david, ecology, paul 
+ 	 Lift: paul, ecology, deleuze, lawrence, city, landscape, thomas, wordsworth, david, nature 
+ 	 Score: paul, nature, man, lawrence, imagination, wordsworth, deleuze, city, capitalism, thomas 
+Topic 7 Top Words:
+ 	 Highest Prob: shakespeare, play, body, power, drama, hamlet, william, tragedy, law, ethic 
+ 	 FREX: shakespeare, hamlet, law, play, drama, body, tragedy, ethic, justice, ethics 
+ 	 Lift: justice, hamlet, shakespeare, law, ethics, derrida, richard, tragedy, drama, ethic 
+ 	 Score: justice, shakespeare, play, body, hamlet, drama, tragedy, power, william, law 
+Topic 8 Top Words:
+ 	 Highest Prob: narrative, world, time, character, story, reality, work, image, reader, film 
+ 	 FREX: story, character, film, time, narrator, narrative, reality, house, west, hero 
+ 	 Lift: return, narrator, story, west, film, night, great, autobiography, growth, character 
+ 	 Score: return, narrative, character, story, time, world, reality, film, narrator, house 
+Topic 9 Top Words:
+ 	 Highest Prob: identity, history, violence, memory, family, community, war, mother, child, trauma 
+ 	 FREX: memory, trauma, family, toni_morrison, war, violence, identity, community, racism, history 
+ 	 Lift: trauma, toni_morrison, diaspora, racism, memory, slavery, freud, slave, home, psychoanalysis 
+ 	 Score: trauma, identity, history, violence, memory, toni_morrison, family, war, mother, community 
+Topic 10 Top Words:
+ 	 Highest Prob: woman, gender, desire, space, ideology, sexuality, joyce, feminism, women, masculinity 
+ 	 FREX: joyce, feminism, gender, masculinity, james_joyce, ulysses, imperialism, sexuality, space, woman 
+ 	 Lift: ulysses, james_joyce, joyce, femininity, feminism, homosexuality, masculinity, colonialism, imperialism, nationalism 
+ 	 Score: ulysses, woman, gender, joyce, space, desire, feminism, sexuality, masculinity, james_joyce 
+Topic 11 Top Words:
+ 	 Highest Prob: reading, learning, education, student, strategy, teacher, teaching, school, learner, efl 
+ 	 FREX: learning, teacher, student, school, education, teaching, efl, reading, textbook, proficiency 
+ 	 Lift: textbook, listening, curriculum, teacher, classroom, college, learning, school, student, teaching 
+ 	 Score: textbook, learning, student, teacher, education, efl, teaching, learner, school, l2 
+Topic 12 Top Words:
+ 	 Highest Prob: subject, structure, effect, order, principle, question, acquisition, condition, clause, pattern 
+ 	 FREX: subject, clause, acquisition, principle, focus, information, ambiguity, structure, pattern, question 
+ 	 Lift: clause, ambiguity, information, subject, focus, production, acquisition, sentence, pattern, choice 
+ 	 Score: clause, subject, acquisition, structure, sentence, information, principle, effect, focus, production 
+Topic 13 Top Words:
+ 	 Highest Prob: writing, theory, approach, case, movement, system, feature, speaker, process, constraint 
+ 	 FREX: movement, theory, feature, approach, writing, system, case, constraint, policy, control 
+ 	 Lift: feature, movement, control, theory, policy, constraint, approach, system, sound, writing 
+ 	 Score: feature, writing, theory, movement, approach, constraint, case, speaker, system, policy 
+Topic 14 Top Words:
+ 	 Highest Prob: poetry, yeats, poem, poet, eliot, t._s._eliot, poetics, tradition, w._b._yeats, george 
+ 	 FREX: yeats, eliot, poetry, poet, poem, w._b._yeats, t._s._eliot, poetics, unity, seamus_heaney 
+ 	 Lift: yeats, w._b._yeats, eliot, seamus_heaney, poet, poem, poetry, poems, unity, poetic 
+ 	 Score: yeats, poetry, poem, eliot, poet, t._s._eliot, w._b._yeats, poetics, george, soul 
+"

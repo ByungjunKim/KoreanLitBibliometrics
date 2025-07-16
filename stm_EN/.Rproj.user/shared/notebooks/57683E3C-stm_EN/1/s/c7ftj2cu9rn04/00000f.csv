@@ -1,0 +1,16 @@
+"0","myprocess <- textProcessor(df$trigrams_lowercase, metadata = df ,wordLengths=c(1,Inf),lowercase = T,"
+"0","                           removenumbers = F, removepunctuation = F, removestopwords = F, stem = F,customstopwords = c('-','-'))"
+"1","Building corpus... 
+"
+"1","Converting to Lower Case... 
+"
+"1","Remove Custom Stopwords...
+"
+"1","Creating Output... 
+"
+"0","myprocess"
+"1","A text corpus with 20784 documents, and an 26723 word dictionary.
+"
+"0","length(myprocess$docs.removed)"
+"1","[1] 1
+"

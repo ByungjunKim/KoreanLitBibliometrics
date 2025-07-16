@@ -1,0 +1,2 @@
+"0","# 토큰 리스트->문자열 처리 (for STM)"
+"0","df$trigrams_lowercase <- map_chr(df$trigrams_lowercase,str_c,collapse='  ')"

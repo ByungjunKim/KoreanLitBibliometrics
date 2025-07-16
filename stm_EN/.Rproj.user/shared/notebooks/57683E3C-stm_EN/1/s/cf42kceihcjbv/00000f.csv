@@ -1,0 +1,3 @@
+"0","m1_K <- stm_model_year_14$settings$dim$K"
+"0","stm_effect_model_year <-  estimateEffect(1:m1_K ~s(pub.year),"
+"0","                                 stm_model_year_14, meta = out$meta, uncertainty = ""Global"",prior=1e-5)"

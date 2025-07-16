@@ -1,0 +1,6 @@
+"0","# N개 이상의 문서에서 등장한 단어만 사용(lower.thresh)"
+"0","out <- prepDocuments(myprocess$documents, myprocess$vocab, myprocess$meta,lower.thresh = 100)"
+"1","Removing 26206 of 26723 terms (150126 of 283645 tokens) due to frequency 
+"
+"1","Removing 371 Documents with No Words 
+Your corpus now has 20413 documents, 517 terms and 133519 tokens."
